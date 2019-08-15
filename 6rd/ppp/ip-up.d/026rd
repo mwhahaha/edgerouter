@@ -1,0 +1,21 @@
+#!/bin/bash
+set -x
+# I don't want this to autostart until i can figure out the mtu stuff
+#exit 0
+
+TUN_INTERFACE=tun0
+# needed for validations
+export vyatta_bindir=/opt/vyatta/bin/
+export vyatta_sbindir=/opt/vyatta/sbin/
+
+source /opt/vyatta/etc/functions/script-template
+
+configure
+
+# Firewall has to be set after tunnel is initialized
+set interfaces tunnel $TUN_INTERFACE firewall in ipv6-name WANv6_IN
+set interfaces tunnel $TUN_INTERFACE firewall local ipv6-name WANv6_LOCAL
+
+commit
+# save
+exit

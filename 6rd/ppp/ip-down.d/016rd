@@ -1,6 +1,6 @@
 #!/bin/bash
 #set -x
-# uncomment this if you want to skip this script
+# not needed at the moment
 #exit 0
 
 LAN_INTERFACE=switch0
