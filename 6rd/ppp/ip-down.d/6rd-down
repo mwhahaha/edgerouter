@@ -1,0 +1,41 @@
+#!/bin/bash
+#set -x
+# uncomment this if you want to skip this script
+#exit 0
+
+LAN_INTERFACE=switch0
+TUN_INTERFACE=tun0
+
+function get_ip() {
+  INT=$1
+  VER=${2:-4}
+  IP=$(ip "-${VER}" address show dev "${INT}" | grep inet | awk '{ print $2 }')
+  echo "${IP}" | awk -F'/' '{print $1}'
+}
+
+function get_netmask() {
+  INT=$1
+  VER=${2:-4}
+  IP=$(ip "-${VER}" address show dev "${INT}" | grep inet | awk '{ print $2 }')
+  NM=$(echo "${IP}" | awk -F'/' '{ print $2 }')
+  if [ -z "$NM" ]; then
+    echo "32"
+  else
+    echo "$NM"
+  fi
+}
+
+LAN_IPV4=$(get_ip "$LAN_INTERFACE")
+LAN_IPV4_NETMASK=$(get_netmask "$LAN_INTERFACE")
+
+source /opt/vyatta/etc/functions/script-template
+
+configure
+
+delete interfaces switch $LAN_INTERFACE address
+set interfaces switch $LAN_INTERFACE address "${LAN_IPV4}/${LAN_IPV4_NETMASK}"
+set interfaces tunnel $TUN_INTERFACE disable
+
+commit
+save
+exit

@@ -1,0 +1,68 @@
+#!/bin/bash
+set -x
+# uncomment this if you want to skip this script
+#exit 0
+
+WAN_INTERFACE=pppoe0
+LAN_INTERFACE=switch0
+TUN_INTERFACE=tun0
+# needed for validations
+export vyatta_bindir=/opt/vyatta/bin/
+export vyatta_sbindir=/opt/vyatta/sbin/
+
+function get_ip() {
+  INT=$1
+  VER=${2:-4}
+  IP=$(ip "-${VER}" address show dev "${INT}" | grep inet | awk '{ print $2 }')
+  echo "${IP}" | awk -F'/' '{print $1}'
+}
+
+function get_netmask() {
+  INT=$1
+  VER=${2:-4}
+  IP=$(ip "-${VER}" address show dev "${INT}" | grep inet | awk '{ print $2 }')
+  NM=$(echo "${IP}" | awk -F'/' '{ print $2 }')
+  if [ -z "$NM" ]; then
+    echo "32"
+  else
+    echo "$NM"
+  fi
+}
+
+LAN_IPV4=$(get_ip "$LAN_INTERFACE")
+LAN_IPV4_NETMASK=$(get_netmask "$LAN_INTERFACE")
+WAN_IPV4=$(get_ip "$WAN_INTERFACE")
+WAN_IPV6="$(printf "2602:%02x:%02x%02x:%02x00::1\n" $(echo $WAN_IPV4 | tr . ' '))"
+
+echo "$WAN_IPV4 -> $WAN_IPV6"
+
+source /opt/vyatta/etc/functions/script-template
+
+configure
+
+delete interfaces switch $LAN_INTERFACE address
+set interfaces switch $LAN_INTERFACE address "${LAN_IPV4}/${LAN_IPV4_NETMASK}"
+set interfaces switch $LAN_INTERFACE address "${WAN_IPV6}/64"
+
+delete interfaces tunnel $TUN_INTERFACE
+
+set interfaces tunnel $TUN_INTERFACE 6rd-default-gw ::205.171.2.64
+set interfaces tunnel $TUN_INTERFACE 6rd-prefix '2602::/24'
+set interfaces tunnel $TUN_INTERFACE address "${WAN_IPV6}/24"
+set interfaces tunnel $TUN_INTERFACE description 'CenturyLink IPv6 6rd tunnel'
+set interfaces tunnel $TUN_INTERFACE encapsulation sit
+set interfaces tunnel $TUN_INTERFACE local-ip "$WAN_IPV4"
+set interfaces tunnel $TUN_INTERFACE mtu 1472
+set interfaces tunnel $TUN_INTERFACE multicast disable
+set interfaces tunnel $TUN_INTERFACE ttl 255
+
+commit
+
+# Firewall has to be set after tunnel is initialized
+# NOTE(aschultz): for some reason this likes to error, need to follow up with why
+set interfaces tunnel $TUN_INTERFACE firewall in ipv6-name WANv6_IN
+set interfaces tunnel $TUN_INTERFACE firewall local ipv6-name WANv6_LOCAL
+
+commit
+save
+exit
